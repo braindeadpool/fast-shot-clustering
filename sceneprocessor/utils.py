@@ -20,11 +20,13 @@ def load_sequence(sequence_dir):
     return file_sequence
 
 
-def load_image(image_path):
+def load_image(image_path, grayscale=False):
     image = None
     if os.path.isfile(image_path):
         try:
             image = cv2.imread(image_path)
+            if grayscale:
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         except:
             logger.error("Could not load image {}".format(image_path))
     else:

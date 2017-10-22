@@ -1,28 +1,46 @@
-from . import utils, describer
+from . import utils, featureprocessor
 import argparse
 import logging
 import os
 
-import cv2
+import matplotlib.pyplot as plt
+import numpy as np
+from tqdm import tqdm
 
 logging.basicConfig()
 logger = logging.getLogger()
 
 
 def main(args):
-    image_describer = describer.Describer('SIFT')
+    feature_processor = featureprocessor.FeatureProcessor('SIFT')
     input_dir = os.path.realpath(args.input_dir)
-    for filename in utils.load_sequence(input_dir):
+    file_sequence = utils.load_sequence(input_dir)[:args.frame_limit]
+
+    similarity_scores = []
+    prev_descriptors = None
+    for filename in tqdm(file_sequence):
         image = utils.load_image(os.path.join(input_dir, filename))
-        keypoints = image_describer.extract_local_descriptors(image)
-        print(keypoints)
-        break
+        keypoints, descriptors = feature_processor.get_local_descriptors(image)
+        matches, positive_matches, similarity_score = feature_processor.match_features(descriptors,
+                                                                                        prev_descriptors)
+        similarity_scores.append(similarity_score)
+        prev_descriptors = descriptors
+        # feature_processor.get_global_descriptor(descriptors)
+
+    if args.plot:
+        xlabels = np.arange(1, len(file_sequence)+1, 10)
+        plt.plot(similarity_scores, color='g', marker='+', linestyle='None')
+        plt.xticks(xlabels)
+        plt.show()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--verbose', action='store_true', help='Display informational output')
     parser.add_argument('--input-dir', type=str, required=True, help='Path to input sequence directory')
     parser.add_argument('--output-file', type=str, help="Path to output text file", default='output.txt')
+    parser.add_argument('--plot', action='store_true', help='Plot metrics')
+    parser.add_argument('--frame-limit', type=int, default=None, help='Number of frames to limit the sequence to')
     args = parser.parse_args()
 
     if args.verbose:

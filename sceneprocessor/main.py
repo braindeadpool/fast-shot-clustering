@@ -19,9 +19,8 @@ def main(args):
     similarity_scores = []
     prev_descriptors = None
 
-    # statistics for outlier detection in similarity scores
-    prev_mean = 0.
-    prev_std = 0.
+    outlier_threshold = 0.4
+
     for i, filename in tqdm(enumerate(file_sequence)):
         image = utils.load_image(os.path.join(input_dir, filename))
         keypoints, descriptors = feature_processor.get_local_descriptors(image)
@@ -29,19 +28,10 @@ def main(args):
                                                                                        prev_descriptors)
         similarity_scores.append(similarity_score)
 
-        if i == 0:
-            current_mean = similarity_score
-            current_std = 0.
-        else:
-            current_mean = prev_mean + (similarity_score - prev_mean) / (i + 1)
-            current_std = np.sqrt((prev_std + (similarity_score - prev_mean) * (similarity_score - current_mean)) / i)
-
-        if similarity_score != 0 and similarity_score < current_mean - 6 * current_std:
+        if similarity_score < outlier_threshold:
             print("Scene change detected at frame {}".format(filename))
 
         prev_descriptors = descriptors
-        prev_mean = current_mean
-        prev_std = current_std
 
     if args.plot:
         xlabels = np.arange(1, len(file_sequence) + 1, 10)

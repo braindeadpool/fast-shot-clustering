@@ -12,23 +12,39 @@ logger = logging.getLogger()
 
 
 def main(args):
-    feature_processor = featureprocessor.FeatureProcessor('SIFT')
+    feature_processor = featureprocessor.FeatureProcessor('ORB')
     input_dir = os.path.realpath(args.input_dir)
     file_sequence = utils.load_sequence(input_dir)[:args.frame_limit]
 
     similarity_scores = []
     prev_descriptors = None
-    for filename in tqdm(file_sequence):
+
+    # statistics for outlier detection in similarity scores
+    prev_mean = 0.
+    prev_std = 0.
+    for i, filename in tqdm(enumerate(file_sequence)):
         image = utils.load_image(os.path.join(input_dir, filename))
         keypoints, descriptors = feature_processor.get_local_descriptors(image)
         matches, positive_matches, similarity_score = feature_processor.match_features(descriptors,
-                                                                                        prev_descriptors)
+                                                                                       prev_descriptors)
         similarity_scores.append(similarity_score)
+
+        if i == 0:
+            current_mean = similarity_score
+            current_std = 0.
+        else:
+            current_mean = prev_mean + (similarity_score - prev_mean) / (i + 1)
+            current_std = np.sqrt((prev_std + (similarity_score - prev_mean) * (similarity_score - current_mean)) / i)
+
+        if similarity_score != 0 and similarity_score < current_mean - 6 * current_std:
+            print("Scene change detected at frame {}".format(filename))
+
         prev_descriptors = descriptors
-        # feature_processor.get_global_descriptor(descriptors)
+        prev_mean = current_mean
+        prev_std = current_std
 
     if args.plot:
-        xlabels = np.arange(1, len(file_sequence)+1, 10)
+        xlabels = np.arange(1, len(file_sequence) + 1, 10)
         plt.plot(similarity_scores, color='g', marker='+', linestyle='None')
         plt.xticks(xlabels)
         plt.show()
@@ -41,6 +57,8 @@ if __name__ == "__main__":
     parser.add_argument('--output-file', type=str, help="Path to output text file", default='output.txt')
     parser.add_argument('--plot', action='store_true', help='Plot metrics')
     parser.add_argument('--frame-limit', type=int, default=None, help='Number of frames to limit the sequence to')
+    parser.add_argument('--window-size', type=int, default=40,
+                        help='Maximum of past frames to use for computing rolling stats')
     args = parser.parse_args()
 
     if args.verbose:

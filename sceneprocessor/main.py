@@ -4,6 +4,7 @@ import logging
 import os
 
 import matplotlib.pyplot as plt
+import natsort
 import numpy as np
 from tqdm import tqdm
 
@@ -20,23 +21,49 @@ def main(args):
     prev_descriptors = None
 
     outlier_threshold = 0.4
+    clustering_threshold = 0.2
+
+    # Dictionary storing frame of scene change and corresponding descriptors  for labeling.
+    last_label = 'A'
+    scene_change_to_descriptors = {}
+    scene_change_to_label = {file_sequence[0]: last_label}
 
     for i, filename in tqdm(enumerate(file_sequence)):
         image = utils.load_image(os.path.join(input_dir, filename))
-        keypoints, descriptors = feature_processor.get_local_descriptors(image)
+        _, descriptors = feature_processor.get_local_descriptors(image)
         matches, positive_matches, similarity_score = feature_processor.match_features(descriptors,
                                                                                        prev_descriptors)
         similarity_scores.append(similarity_score)
 
-        if similarity_score < outlier_threshold:
+        if len(matches) > 0 and similarity_score < outlier_threshold:
             print("Scene change detected at frame {}".format(filename))
+            label_assigned = False
+            if filename in scene_change_to_label:
+                continue
+            max_score = 0.
+            for prev_filename in scene_change_to_descriptors:
+                matches, _, score = feature_processor.match_features(descriptors,
+                                                                     scene_change_to_descriptors[prev_filename])
+                if score > clustering_threshold and score > max_score:
+                    scene_change_to_label[filename] = scene_change_to_label[prev_filename]
+                    max_score = score
+                    label_assigned = True
+
+            scene_change_to_descriptors[filename] = descriptors
+            if not label_assigned:
+                last_label = chr(ord(last_label) + 1)
+                scene_change_to_label[filename] = last_label
 
         prev_descriptors = descriptors
 
+    print("keyframe, scene-id")
+    for filename in natsort.natsorted(scene_change_to_label.keys()):
+        print("{}, {}".format(filename, scene_change_to_label[filename]))
+
     if args.plot:
-        xlabels = np.arange(1, len(file_sequence) + 1, 10)
+        x_labels = np.arange(1, len(file_sequence) + 1, 10)
         plt.plot(similarity_scores, color='g', marker='+', linestyle='None')
-        plt.xticks(xlabels)
+        plt.xticks(x_labels)
         plt.show()
 
 
